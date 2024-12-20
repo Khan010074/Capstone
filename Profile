@@ -1,0 +1,105 @@
+<?php
+require 'db.php';
+session_start();
+
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
+
+$user_id = $_SESSION['user_id'];
+$success = $error = '';
+
+// Fetch current user details
+$stmt = $conn->prepare("SELECT name, email, address, password FROM users WHERE id = ?");
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$user = $stmt->get_result()->fetch_assoc();
+
+// Handle profile update (name and address)
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_profile'])) {
+    $name = trim($_POST['name']);
+    $address = trim($_POST['address']);
+
+    $stmt = $conn->prepare("UPDATE users SET name = ?, address = ? WHERE id = ?");
+    $stmt->bind_param("ssi", $name, $address, $user_id);
+    if ($stmt->execute()) {
+        $success = "Profile updated successfully!";
+        $user['name'] = $name;
+        $user['address'] = $address;
+    } else {
+        $error = "Error updating profile.";
+    }
+}
+
+// Handle password change
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['change_password'])) {
+    $current_password = $_POST['current_password'];
+    $new_password = $_POST['new_password'];
+    $confirm_password = $_POST['confirm_password'];
+
+    if (!password_verify($current_password, $user['password'])) {
+        $error = "Current password is incorrect.";
+    } elseif ($new_password !== $confirm_password) {
+        $error = "New passwords do not match.";
+    } else {
+        $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+        $stmt->bind_param("si", $hashed_password, $user_id);
+        if ($stmt->execute()) {
+            $success = "Password updated successfully!";
+        } else {
+            $error = "Error updating password.";
+        }
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Profile</title>
+    <link rel="stylesheet" href="bootstrap.min.css">
+</head>
+<body>
+    <?php include 'sidebar.php'; ?>
+    <div class="container  col-6">
+        <h3>User Profile</h3>
+        <?php if (!empty($success)) echo "<div class='alert alert-success'>$success</div>"; ?>
+        <?php if (!empty($error)) echo "<div class='alert alert-danger'>$error</div>"; ?>
+
+        <!-- Update Profile -->
+        <form method="POST">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($user['name']) ?>" required>
+            </div>
+            <div class="form-group">
+                <label>Pickup Address</label>
+                <textarea name="address" class="form-control" required><?= htmlspecialchars($user['address']) ?></textarea>
+            </div>
+            <button type="submit" name="update_profile" class="btn btn-success">Update Profile</button>
+        </form>
+
+        <hr>
+
+        <!-- Change Password -->
+        <h4>Change Password</h4>
+        <form method="POST">
+            <div class="form-group">
+                <label>Current Password</label>
+                <input type="password" name="current_password" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="password" name="new_password" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Confirm New Password</label>
+                <input type="password" name="confirm_password" class="form-control" required>
+            </div>
+            <button type="submit" name="change_password" class="btn btn-primary">Change Password</button>
+        </form>
+    </div>
+</body>
+</html>
